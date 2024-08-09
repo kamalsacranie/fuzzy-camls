@@ -1,0 +1,4 @@
+(executable
+ (public_name programme_generator)
+ (name main)
+ (libraries programme_generator str))
