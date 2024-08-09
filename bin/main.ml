@@ -7,19 +7,23 @@ let rec int_range ~s ~e =
 let possible_lens = int_range ~s:1 ~e:11
 
 type pos =
+  | Programme
   | Definition
+  | Definitions
   | Alpha
   | Alphanum
   | Lowercase
   | Uppercase
   | Digit
-  | Temp
   | Identifier
+  | Number
+  | Objective
 
 type temp =
   | RMany : temp list -> temp
   | RSome : temp list -> temp
   | G : pos list -> temp (* as in "Generator" *)
+  | S : temp list -> temp (* as in "Sequence" *)
   | T : string list -> temp (* as in "Terminal" *)
 
 let uppercase_chars =
@@ -36,16 +40,19 @@ let digits = int_range ~s:0 ~e:10 |> List.map string_of_int
 let sample_random l = List.nth l (Random.int (List.length l))
 
 let hm =
-  let hm = Hashtbl.create 12345 in
-  Hashtbl.add hm Lowercase [ [ T lowercase_chars ] ];
-  Hashtbl.add hm Uppercase [ [ T uppercase_chars ] ];
-  Hashtbl.add hm Digit [ [ T digits ] ];
-  Hashtbl.add hm Identifier [ [ G [ Alpha ]; RMany [ G [ Alphanum ] ] ] ];
-  Hashtbl.add hm Definition
-    [ [ G [ Identifier ]; T [ "=" ]; RMany [ G [ Digit ] ] ] ];
-  Hashtbl.add hm Alpha [ [ G [ Lowercase ] ]; [ G [ Uppercase ] ] ];
-  Hashtbl.add hm Alphanum [ [ G [ Alpha ] ]; [ G [ Digit ] ] ];
-  Hashtbl.add hm Temp [ [ RSome [ T [ "" ] ] ] ];
+  let open Hashtbl in
+  let hm = create 12345 in
+  add hm Lowercase [ [ T lowercase_chars ] ];
+  add hm Uppercase [ [ T uppercase_chars ] ];
+  add hm Alpha [ [ G [ Lowercase ] ]; [ G [ Uppercase ] ] ];
+  add hm Alphanum [ [ G [ Alpha ] ]; [ G [ Digit ] ] ];
+  add hm Digit [ [ T digits ] ];
+  add hm Identifier [ [ G [ Alpha ]; RMany [ G [ Alphanum ] ] ] ];
+  add hm Number [ [ RSome [ G [ Digit ] ] ] ];
+  add hm Definition [ [ G [ Identifier ]; T [ "=" ]; G [ Number ] ] ];
+  add hm Definitions [ [ RMany [ S [ G [ Definition ]; T [ ";" ] ] ] ] ];
+  add hm Objective [ [ T [ "min"; "max" ]; T [ ":" ]; G [ Number ] ] ];
+  add hm Programme [ [ G [ Definitions ]; G [ Objective ]; T [ ";" ] ] ];
   hm
 
 let rec idk_yet (part_of_sp : pos) =
@@ -68,9 +75,10 @@ let rec idk_yet (part_of_sp : pos) =
         loop rule reps
     | G pos -> idk_yet (pos |> sample_random)
     | T term -> term |> sample_random
+    | S terms -> List.fold_left acc_f "" terms
   in
   List.fold_left acc_f "" (sample_random pos_parts)
 
 let () =
   Random.self_init ();
-  idk_yet Definition |> print_endline
+  idk_yet Programme |> print_endline
