@@ -18,11 +18,18 @@ type pos =
   | Identifier
   | Number
   | Objective
-  | AExp
-  | MExp
-  | Term
+  | DAExp
+  | DMExp
+  | DTerm
   | EnumLit
   | Enum
+  | Array
+  | Unary
+  | MAExp
+  | MMExp
+  | MTerm
+  | MIdentifier
+  | Sum
 
 let _show_pos = function
   | Programme -> "Programme"
@@ -36,11 +43,18 @@ let _show_pos = function
   | Identifier -> "Identifier"
   | Number -> "Number"
   | Objective -> "Objective"
-  | AExp -> "AExp"
-  | MExp -> "MExp"
-  | Term -> "Term"
+  | DAExp -> "DAExp"
+  | DMExp -> "DMExp"
+  | DTerm -> "DTerm"
   | EnumLit -> "EnumLit"
   | Enum -> "Enum"
+  | Array -> "Array"
+  | Unary -> "Unary"
+  | MAExp -> "MAExp"
+  | MMExp -> "MMExp"
+  | MTerm -> "MTerm"
+  | MIdentifier -> "MIdentifier"
+  | Sum -> "Sum"
 
 type temp =
   | RMany : temp list -> temp
@@ -65,6 +79,12 @@ let sample_random l = List.nth l (Random.int (List.length l))
 
 let hm =
   let open Hashtbl in
+  let alnum_str = RSome [ G [ Alphanum ] ] in
+  let sep_pos_end_opt pos sep = S [ pos; RMany [ S [ sep; pos ] ]; O sep ] in
+  let paren_exp inner = [ S [ T [ "(" ]; G [ inner ]; T [ ")" ] ] ] in
+  let list_like lbend pos sep rbend =
+    [ lbend; sep_pos_end_opt pos sep; rbend ]
+  in
   let hm = create 12345 in
   add hm Lowercase [ [ T lowercase_chars ] ];
   add hm Uppercase [ [ T uppercase_chars ] ];
@@ -72,35 +92,66 @@ let hm =
   add hm Alphanum [ [ G [ Alpha ] ]; [ G [ Digit ] ] ];
   add hm Digit [ [ T digits ] ];
   add hm Identifier [ [ G [ Alpha ]; RMany [ G [ Alphanum ] ] ] ];
-  add hm Number [ [ RSome [ G [ Digit ] ] ] ];
-  add hm AExp [ [ G [ MExp ] ]; [ G [ MExp ]; T [ " + "; " - " ]; G [ AExp ] ] ];
-  add hm MExp [ [ G [ Term ] ]; [ G [ Term ]; T [ " * "; " / " ]; G [ MExp ] ] ];
-  add hm EnumLit
+  add hm MIdentifier
     [
-      [ T [ "{ " ]; RSome [ G [ Alphanum ] ]; O (T [ "," ]); T [ " }" ] ];
+      [ G [ Identifier ] ];
+      [ G [ Uppercase ]; RMany [ S [ T [ "_" ]; G [ Lowercase ] ] ] ];
+    ];
+  add hm Number [ [ RSome [ G [ Digit ] ] ] ];
+  add hm Array
+    [
+      list_like (T [ "[ " ])
+        (G [ Array; DAExp; DAExp; DAExp; DAExp; DAExp; DAExp; DAExp ])
+        (T [ ", " ]) (T [ " ]" ]);
+    ];
+  add hm DAExp
+    [ [ G [ DMExp ] ]; [ G [ DMExp ]; T [ " + "; " - " ]; G [ DAExp ] ] ];
+  add hm DMExp
+    [ [ G [ DTerm ] ]; [ G [ DTerm ]; T [ " * "; " / " ]; G [ DMExp ] ] ];
+  add hm MAExp
+    [ [ G [ MMExp ] ]; [ G [ MMExp ]; T [ " + "; " - " ]; G [ MAExp ] ] ];
+  add hm MMExp
+    [ [ G [ MTerm ] ]; [ G [ MTerm ]; T [ " * "; " / " ]; G [ MMExp ] ] ];
+  add hm EnumLit [ list_like (T [ "{ " ]) alnum_str (T [ ", " ]) (T [ " }" ]) ];
+  add hm Enum [ [ G [ Identifier ] ]; [ G [ EnumLit ] ] ];
+  add hm Unary [ [ T [ "-"; "+" ]; G [ DAExp ] ] ];
+  add hm Sum
+    [
+      [ T [ "SUM" ]; T [ "{" ]; S [ G [ Lowercase ]; T [ " = " ] ]; T [ "}" ] ];
+    ];
+  add hm MTerm
+    [
+      [ G [ MIdentifier ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      paren_exp MAExp;
+    ];
+  add hm DTerm
+    [
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Number ] ];
+      [ G [ Unary ] ];
+      [ G [ Identifier ] ];
+      paren_exp DAExp;
+    ];
+  add hm Definition
+    [
       [
-        T [ "{ " ];
-        S
-          [
-            RSome [ G [ Alphanum ] ];
-            RSome [ S [ T [ ", " ]; RSome [ G [ Alphanum ] ] ] ];
-            O (T [ "," ]);
-          ];
-        T [ " }" ];
+        G [ Identifier ];
+        T [ " = " ];
+        G [ DAExp; Enum; Array; DAExp; Enum; DAExp; Enum ];
       ];
     ];
-  add hm Enum [ [ G [ Identifier ] ]; [ G [ EnumLit ] ] ];
-  add hm Term
-    [
-      [ G [ Number ] ];
-      [ G [ Identifier ] ];
-      [ G [ Number ] ];
-      [ G [ Identifier ] ];
-      [ S [ T [ "(" ]; G [ AExp ]; T [ ")" ] ] ];
-    ];
-  add hm Definition [ [ G [ Identifier ]; T [ " = " ]; G [ AExp; Enum ] ] ];
   add hm Definitions [ [ RMany [ S [ G [ Definition ]; T [ ";\n" ] ] ] ] ];
-  add hm Objective [ [ T [ "min"; "max" ]; T [ ": " ]; G [ AExp ] ] ];
+  add hm Objective [ [ T [ "min"; "max" ]; T [ ": " ]; G [ MAExp ] ] ];
   add hm Programme [ [ G [ Definitions ]; G [ Objective ]; T [ ";" ] ] ];
   hm
 
