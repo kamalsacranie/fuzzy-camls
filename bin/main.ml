@@ -1,6 +1,18 @@
 let ( << ) f g x = g (f x)
 let string_of_char c : string = String.make 1 c
 
+(* If we ever rewrite:
+   - Make every part of speech have some sort of importance rating and
+     repetition rules
+   - Maybe call them something else than parts of speech...
+   - Make different gramamrs composable
+   - Make every thing just take one "temp" type. Right now, we have some
+     instances where we have to declare an explicit sequence and others where a
+     list implies a sequence, this is bad design
+   - There's just too many ways to have optional things
+   - Add some way to denote that we can surround some rule with whitespace
+*)
+
 let rec int_range ~s ~e =
   match s - e with 0 -> [] | _ -> s :: int_range ~s:(s + 1) ~e
 
@@ -30,6 +42,8 @@ type pos =
   | MTerm
   | MIdentifier
   | Sum
+  | Constraint
+  | Constraints
 
 let _show_pos = function
   | Programme -> "Programme"
@@ -55,6 +69,8 @@ let _show_pos = function
   | MTerm -> "MTerm"
   | MIdentifier -> "MIdentifier"
   | Sum -> "Sum"
+  | Constraint -> "Constraint"
+  | Constraints -> "Constraints"
 
 type temp =
   | RMany : temp list -> temp
@@ -117,42 +133,38 @@ let hm =
   add hm Unary [ [ T [ "-"; "+" ]; G [ DAExp ] ] ];
   add hm Sum
     [
-      [ T [ "SUM" ]; T [ "{" ]; S [ G [ Lowercase ]; T [ " = " ] ]; T [ "}" ] ];
+      [
+        T [ "SUM" ];
+        T [ "{" ];
+        S [ G [ Lowercase ]; T [ " = " ]; G [ Enum ] ];
+        T [ "}" ];
+      ];
     ];
   add hm MTerm
-    [
-      [ G [ MIdentifier ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      paren_exp MAExp;
-    ];
+    [ [ G [ Sum ] ]; [ G [ MIdentifier ] ]; [ G [ Number ] ]; paren_exp MAExp ];
   add hm DTerm
-    [
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Number ] ];
-      [ G [ Unary ] ];
-      [ G [ Identifier ] ];
-      paren_exp DAExp;
-    ];
+    [ [ G [ Number ] ]; [ G [ Unary ] ]; [ G [ Identifier ] ]; paren_exp DAExp ];
   add hm Definition
     [
       [
         G [ Identifier ];
         T [ " = " ];
-        G [ DAExp; Enum; Array; DAExp; Enum; DAExp; Enum ];
+        G [ DAExp; Enum; Array; DAExp; Enum; DAExp ];
       ];
     ];
+  add hm Constraint
+    [
+      [
+        G [ MAExp ];
+        T ([ "<="; ">="; "=="; ">"; "<" ] |> List.map (fun s -> " " ^ s ^ " "));
+        G [ MAExp ];
+      ];
+    ];
+  add hm Constraints [ [ RMany [ S [ G [ Constraint ]; T [ ";\n" ] ] ] ] ];
   add hm Definitions [ [ RMany [ S [ G [ Definition ]; T [ ";\n" ] ] ] ] ];
   add hm Objective [ [ T [ "min"; "max" ]; T [ ": " ]; G [ MAExp ] ] ];
-  add hm Programme [ [ G [ Definitions ]; G [ Objective ]; T [ ";" ] ] ];
+  add hm Programme
+    [ [ G [ Definitions ]; G [ Objective ]; T [ ";\n" ]; G [ Constraints ] ] ];
   hm
 
 let get_all_nested_pos r =
@@ -200,7 +212,14 @@ let rec idk_yet (part_of_sp : pos) =
     | S terms -> List.fold_left acc_f "" terms
     | O rule -> if Random.int 101 >= 50 then acc_f "" rule else ""
   in
-  List.fold_left acc_f "" (sample_random pos_parts)
+  let te = ref (sample_random pos_parts) in
+  for _ = 0 to 1 do
+    te :=
+      if List.exists _is_recursive (get_all_nested_pos [ !te ]) then
+        sample_random pos_parts
+      else !te
+  done;
+  List.fold_left acc_f "" !te
 
 let () =
   Random.self_init ();
